@@ -377,3 +377,191 @@ public class Main {
 - 带标签的break会中断并跳出标签所指的循环
 
 ###  《第五章 初始化与清理》学习笔记
+
+#### 5.5清理：终结处理和垃圾回收
+
+##### finalize()的作用
+
+一旦垃圾回收期准备好释放对象占用的存储空间，将首先调用其`finalize()`方法，并且在下一次垃圾回收动作发生时，才真正回收对象占用的内存。其不可作为通用的清理方法，而只能与内存及其回收有关。
+
+##### 三个要点
+
++ 对象可能不被垃圾回收：在对象已经不再使用时，垃圾回收并不是一定准时的，且回收动作本身有一定开销。
++ 垃圾回收并不等于析构：析构函数在局部对象出作用域以后会立即调用，非常准点。new对象则在delete调用时，调用相应的析构函数。
++ 垃圾回收只与内存有关：垃圾回收的唯一目的即回收内存，所以`finalize()`也必须与此相关。
+
+
+##### 【问题】finalize()调用的不确定性：`finalize()`手动调用会影响垃圾回收吗？`System.gc()`方法调用可以使垃圾回收立刻进行吗？
+
+在这个部分书上的代码由于输出只有一种，即`finalize()`成功调用的情况，不能很好地表现其不确定性。我在这之上做了修改，在里先附上自定义类`Book`的代码：
+
+```java
+class Book{
+    boolean checkedout = false;
+        Book(boolean checkedout){
+            this.checkedout = checkedout;
+        }
+        void checkIn(){
+            checkedout = false;
+        }
+
+        @Override
+        protected void finalize(){
+            if (checkedout){
+                System.out.println("Error : checked out");
+            }else{
+                try{
+                    System.out.println("finalize");
+                    super.finalize();
+                }catch (Throwable e){
+                    e.printStackTrace();
+                }
+            }
+        }
+}
+```
+
+验证不确定性：
+
+```java
+public static void main(String[] args) {
+    Book novel = new Book(true);
+    novel.checkIn();
+    //novel.finalize();
+    new Book(true);
+    //书上说明gc()方法会强制进行垃圾回收，但是查阅资料表明，gc()方法依然只是对JVM的一个垃圾回收建议，所以上述两个对象依然不会保证被回收
+    System.gc();
+    //System.runFinalization();
+	//System.runFinalizersOnExit(true);
+}
+/**Output
+有时为
+Error : checked out
+有时为：
+Error : checked out
+finalize
+有时为空
+
+当`novel.finalize()`未被注释时，输出则在前面的输出前加上一条finalize
+
+*/
+```
+
+可以看到在调用了`System.gc()`的情况下，垃圾回收依然不是一定会发生的。这就给`finalize()`的执行带来了极大的不确定性。
+
+如果手动调用`novel.finalize()`，那么只相当于普通的方法调用，不会对垃圾回收造成任何影响。
+
+**之后的笔记中，为了叙述方便，垃圾回收简称为GC(Garbage Collection)**
+
+##### 【问题】`System.gc()`  `System.runFinalization()  `  `System.runFinalizersOnExit(true)` 三者的区别是什么？
+
+`System.gc()` ：建议执行GC，效果参见上述验证不确定性的例子
+
+ `System.runFinalization()  ` ：将失去引用(被丢弃但是`finalize()`还没有调用)的对象进行回收，但是此处的`finalize()`调用依然不考虑手动调用的情况。函数说明和示例如下：
+
+```java
+/**
+     * Runs the finalization methods of any objects pending finalization.
+     * <p>
+     * Calling this method suggests that the Java Virtual Machine expend
+     * effort toward running the <code>finalize</code> methods of objects
+     * that have been found to be discarded but whose <code>finalize</code>
+     * methods have not yet been run. When control returns from the
+     * method call, the Java Virtual Machine has made a best effort to
+     * complete all outstanding finalizations.
+     * <p>
+     * The call <code>System.runFinalization()</code> is effectively
+     * equivalent to the call:
+     * <blockquote><pre>
+     * Runtime.getRuntime().runFinalization()
+     * </pre></blockquote>
+     *
+     * @see     java.lang.Runtime#runFinalization()
+     */
+    public static void runFinalization() {
+        Runtime.getRuntime().runFinalization();
+    }
+
+	public static void main(String[] args) {
+        Book novel = new Book(true);
+        novel.checkIn();
+        new Book(true).finalize();
+        System.runFinalization();
+    }
+	/**Output
+	恒为
+	Error : checked out
+	Error : checked out
+	*/
+```
+
+ `System.runFinalizersOnExit(true)` ：在程序运行结束时，强制对所有的对象进行回收，但是该方法已经不再被推荐使用了。且从输出结果上我们可以看到，回收顺序可能是已经失去引用的对象被优先回收的。
+
+```java
+public static void main(String[] args) {
+    Book novel = new Book(true);
+    novel.checkIn();
+    new Book(true);
+    System.runFinalizersOnExit(true);
+}
+/**Output
+恒为
+Error : checked out
+finalize
+*/
+```
+
+##### 5.5.4垃圾回收器如何工作
+
+###### 引用计数
+
+每个对象含有一个引用计数器，当有引用连接至对象时，计数器+1；引用离开作用域或者被置为null时，计数器-1。进行GC时会在含有全部对象的列表上进行遍历，当发现某个对象引用计数为0，则回收该对象。缺陷在于**对象之前存在循环引用**，例如
+
+```java
+class A{
+  public B b_of_a;
+   
+}
+class B{
+  public A a_of_b;
+}
+public class Main{
+    public static void main(String[] args){
+    A a = new A();
+    B b = new B();
+    a.b_of_a = b;
+    b.a_of_b = a;
+    }
+}
+```
+
+a要被回收时，需等待成员b_of_a被回收，而b_of_a指向b，所以需要先回收b；b要被回收时，需要等待a_of_b的回收，即等待a的回收。两者陷入了互相等待，出现**对象应该被回收，但是引用计数器不为0**的情况。
+
+定位这种情况对于GC而言工作量非常大，且每次为对象进行计数也需要不小的开销，故引用计数常用来说明GC的工作方式，而不会实际应用在Java虚拟机中。
+
+
+
+###### 非引用计数思想
+
+对活的对象，一定能最终追溯到其存活在堆栈或静态存储区之间的引用，虽然这一引用链可能会穿过多个对象层次（以局部变量为例，在引用出作用域以后，会从堆栈中移除）。只要从堆栈和静态存储区开始，直到*根源于堆栈和静态存储区的引用* 所形成的网络，就能找到活的对象。其他的对象则是可以被回收的。
+
+
+
+##### GC基本算法
+
+###### 标记-清除（Mark - Sweep）
+
+此算法执行分两阶段。第一阶段从引用根节点开始标记所有被引用的对象，第二阶段遍历整个堆，把未标记的对象清除。此算法会产生内存碎片。当产生的垃圾较少甚至不会产生垃圾时，GC速度是非常快的。
+
+
+
+###### 停止-复制（Stop - Copying）
+此算法把内存空间划为两个相等的区域，每次只使用其中一个区域。 
+
+
+
+##### 【问题】Java的对象都是在堆上，而非引用计数思想是根据访问“根源于堆栈和静态存储区的引用”所形成的网络来寻找存活的对象的，前面已经提到Java并不会在堆栈上分配对象，那Java虚拟机是如何判断对象存活的呢？
+
+
+
+
