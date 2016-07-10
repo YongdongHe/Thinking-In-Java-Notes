@@ -58,6 +58,8 @@
 
 
 
+
+
 ### 《第一章 对象导论》 学习笔记
 
 #### 1.4 被隐藏的具体实现
@@ -556,12 +558,171 @@ a要被回收时，需等待成员b_of_a被回收，而b_of_a指向b，所以需
 
 
 ###### 停止-复制（Stop - Copying）
-此算法把内存空间划为两个相等的区域，每次只使用其中一个区域。 
+此算法把内存空间划为两个相等的区域，每次只使用其中一个区域。 释放旧有对象前，将存活的对象从一个区域复制到另外一个区域，然后清除旧区域，将导致大量的复制行为。
+
+
+
+###### 自适应的、分代的、停止-复制、标记-横扫
+
+内存以块为单位，每个块用代数来记录它是否存活。块被引用时，将导致代数增加，垃圾回收器将对上次回收动作之后新分配的块进行整理：可以处理大量短命的临时对象。
+
+同时垃圾回收器定时进行完整清理，大型对象不会被赋值，但是代数增加，小型对象则被复制并整理。如果所有对象都很稳定，这时候GC效率会比较低，虚拟机切换到“标记-清除”算法。当碎片很多时则启用“停止-复制”，这就是自适应技术。
 
 
 
 ##### 【问题】Java的对象都是在堆上，而非引用计数思想是根据访问“根源于堆栈和静态存储区的引用”所形成的网络来寻找存活的对象的，前面已经提到Java并不会在堆栈上分配对象，那Java虚拟机是如何判断对象存活的呢？
 
+
+
+#### 5.7构造器初始化
+
+##### 【问题】static的静态子句跟static成员变量定义都会在类第一次被访问时调用，他们的调用顺序是什么样的？
+
+查看下面的代码
+
+```java
+
+public class Main {
+    public static void main(String[] args) {
+        System.out.println("Cups1");
+        new Cups();
+        System.out.println("\nCups1");
+        new Cups();
+    }
+
+    public static class Cups{
+      	/*区域1*/
+        static {
+            cup1 = new Cup(1);//此处虽然cup1在后面才声明，但是却不会报错
+            System.out.println("static");
+        }
+        static Cup cup2 = new Cup(2);
+        static Cup cup1;/*区域1*/
+      	/*区域2*/
+        {
+            System.out.println("not static");
+        }/*区域2*/
+        Cups(){
+            System.out.println("Cups");
+        }
+    }
+
+    public static class Cup{
+        Cup(int mark){
+            System.out.println(String.format("Cup(%d)",mark));
+        }
+    }
+}
+
+/**Output
+Cups1
+Cup(1)
+static
+Cup(2)
+not static
+Cups
+
+Cups1
+not static
+Cups
+*/
+```
+
+最后结果可以看到，声明为static的子句和static的对象都是按照所写顺序来进行初始化的。并且只会在类被首次访问时会且只会一次运行。但是句子在前面也可以访问到后面声明的对象。
+
+而不带static的子句则在每次构造对象时都会运行一次。如区域2。
+
+#### 5.8数组初始化
+
+##### 【问题】带有可变参数`double...`的函数A，带有可变参数`double...`的函数B，和同名的不带可变参数的函数C，当除了必选参数的附加参数数目为0时，A和B谁将被优先调用？
+
+```java
+
+public class Main {
+    public static void main(String[] args) {
+        print();
+    }
+	//A
+    static void print(double...ds){
+        System.out.println("print double");
+        for (double arg : ds){
+            System.out.println(arg);
+        }
+    }
+  	//B
+    static void print(int...is){
+        System.out.println("print int");
+        for (int arg : is){
+            System.out.println(arg);
+        }
+    }
+  	//C
+  	//    static void print(){
+	//        System.out.println("empty print");
+	//    }
+}
+
+/**Output
+print int
+当C函数取消注释后结果为
+empty print
+*/
+```
+
+输出表明，不带可变参数的函数会更优先被调用，上图调用优先级分别为C>B>A
+
+那为什么B>A呢？
+
+### 《第六章 访问权限控制》学习笔记
+
+##### 6.1.1代码组织
+
+如图所下类
+
+```java
+public class Main {
+    public static void main(String[] args) {
+        class B{
+            B(){
+                class C{
+
+                }
+            }
+            class C{
+
+            }
+        }
+    }
+    class C{
+
+    }
+    static class B{
+
+    }
+
+}
+class A{
+    class D{
+        class E{
+
+        }
+    }
+}
+```
+
+在编译后生成的class文件如下
+
++ A\$D\$E.class
++ A\$D.class
++ A.class
++ Main\$1B\$1C.class
++ Main\$1B\$C.class
++ Main\$1B.class
++ Main\$B.class
++ Main\$C.class
++ Main.class
+
+可以看到class文件是以类的层级关系来命名的，其中类的内外部关系用\$符号表示，如果不是作为内部类而是局部类的话，则会在类名前加上1
 
 
 
