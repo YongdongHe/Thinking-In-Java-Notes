@@ -675,6 +675,8 @@ empty print
 
 ### 《第六章 访问权限控制》学习笔记
 
+#### 6.1 包：库单元
+
 ##### 6.1.1代码组织
 
 如图所下类
@@ -722,7 +724,475 @@ class A{
 + Main\$C.class
 + Main.class
 
-可以看到class文件是以类的层级关系来命名的，其中类的内外部关系用\$符号表示，如果不是作为内部类而是局部类的话，则会在类名前加上1
+可以看到class文件是以类的层级关系来命名的，其中类的内外部关系用\$符号表示，如果是局部类的话，则会在类名前加上1   
 
 
 
+### 《第七章 复用类》
+
+#### 7.8 `final`关键字
+
+##### 【问题】final跟C++中的const异同？
+
+相同点：
+
++ 都可以用来修饰变量、参数、方法
++ 都表示修饰的内容的不变性
+
+不同点：
+
++ 修饰变量时：`final`允许生成空白的final域，相关的变量可以在声明之后（使用之前）再进行初始化。而`const`则需要在声明时便初始化。
++ 修饰参数时：都表示参数在函数内不能被改变。但是由于C++中指针的存在，`const`修饰`const char* Var`表示参数指针Var所指内容为常量不可变，`const`修饰`char* const Var`时表示参数指针本身为常量不可变，不可再指向其他的对象。
++ 修饰方法时：`final`表示该方法不可被继承。（故所有`private`方法其实都相当于被`final`修饰过）。而`const`修饰的方法智能调用其他也被`const`修饰的方法。
+
+
+
+其中`final`在过去被建议使用的原因是，修饰为`final`的方法将被转为内嵌调用，避免了参数压栈、调至方发处执行等等操作，可以提高效率。但是当方法很大时，这种内嵌可能会导致代码膨胀，反而无法提高效率。在最新的Java版本中，虚拟机可以自动检测并优化去掉这种效率降低的额外内嵌。
+
+
+
+### 《第八章  多态》
+
+#### 8.2 方法调用绑定
+
+将一个方法调用同一个方法主体关联起来被称作**绑定**。在程序执行前进行绑定称**前期绑定**，在运行时根据对象的类型进行绑定称为**后期绑定**（也成为动态绑定和运行时绑定）。要进行后期绑定，必须在对象中安置某种类型信息。
+
+Java中除了`static`方法和`final`方法，其他的方法都是后期绑定。
+
+效果示例
+
+```java
+public class Main {
+    public static void main(String[] args) {
+        class Tool {
+            public void p(){
+                System.out.println("Tool p");
+            }
+            public void f(){
+                System.out.println("Tool f");
+            }
+        }
+        class Tool2 extends Tool {
+            public void p(){
+                System.out.println("Tool2 p");
+            }
+            /*
+            @Override
+            //添加override注解可以帮助编译器检查错误
+            //Method doesn't override method form its superclass
+            public void f2(){
+                
+            }
+            */
+        }
+        Tool tool = new Tool2();
+        tool.p();
+        tool.f();
+    }
+}
+
+/*Output
+Tool2 p
+Tool f
+*/
+```
+
+​	
+
+##### 【问题】static方法具有多态性吗？
+
+答案是不具有的。静态方法与类关联，而并非与单个对象关联，所以会出现下面的示例状况：
+
+```java
+public class Main {
+    public static void main(String[] args) {
+        StaticSuper staticSuper = new StaticSub();
+        staticSuper.StaticPrint();
+    }
+    public static class StaticSuper {
+        public static void  StaticPrint(){
+            System.out.println("StaticSuper print");
+        }
+    }
+
+    public static class StaticSub extends StaticSuper{
+        public static void StaticPrint(){
+            System.out.println("StaticSub print");
+        }
+    }
+}
+
+/**Output
+StaticSuper print
+*/
+```
+
+#### 8.3构造器和多态
+
+##### 8.3.3 构造器内部的多态方法行为
+
+##### 【问题】在构造器内部调用正在构造的对象的某个动态绑定方法，如下的调用将会发生什么？
+
+```java
+public class Main {
+    public static void main(String[] args) {
+        StaticSuper staticSuper = new StaticSub();
+    }
+    public static class StaticSuper {
+        int printContent = 1;
+
+        public StaticSuper() {
+            StaticPrint();
+            DynamicPrint();
+        }
+
+        public  void  StaticPrint(){
+            System.out.println("StaticSuper print");
+        }
+        public void DynamicPrint(){
+            //System.out.println("Super Dynamic Print");//B
+          	System.out.println(printContent);//A
+        }
+    }
+
+    public static class StaticSub extends StaticSuper{
+        int printContent = 2;
+
+        public StaticSub() {
+        }
+
+        public void StaticPrint(){
+            System.out.println("StaticSub print");
+        }
+        
+        public void DynamicPrint(){
+            System.out.println(printContent);
+        }
+    }
+}
+```
+
+如果在构造器中执行的方法依然遵循我们之前所了解的动态绑定规则，那么在`StaticSuper()`构造器里运行的`StaticPrint()`和`DynamicPrint()`都应该是子类中的函数，那么结果如何呢？实际输出为下：
+
+
+
+```
+StaticSub print
+0
+```
+
+可以看到确实依然遵循了动态绑定规则，但是输出的`printContent`却有些不同了，而且显然调用的依然是`StaticSub`类的`DynamicPrint()`，因为将A\B两句互换后，输出结果依然是这样。说明在调用`StaticSuper`的构造方法时，`StaticSub`的成员并没有初始化完全。
+
+实际上初始化的过程是这样的：
+
+1. 在任何其他事物发生前，将分配给对象的存储空间初始化为二进制的零
+2. 在子类构造器构造开始前，调用基类构造器。如果在基类构造器里调用了动态绑定方法，则调用对应的覆盖后的方法。
+3. 按照声明的顺序，调用初始化导出类的成员。
+4. 调用导出类（对象实际的类型）的构造器主体。
+
+
+正是因为在步骤2进行时，步骤3尚未进行，才会出现上述的情况。
+
+所以编写构造器时的一条有效准则是： **尽量使用简单的方法使对象进入正常状态，可以的话，避免调用其他方法**。
+
+
+
+### 《第九章  接口》
+
+#### 9.2 接口
+
+接口中的方法默认是，也只能是`public`，否则在方法被继承的过程中，其可访问权限就被降低了。这不是设计接口的初衷。
+
+接口中的变量则默认是`public static fianl`，当同时实现了多个接口时，变量前需要加上接口名来区分。
+
+```java
+public class Main {
+    public static void main(String[] args) {
+        StaticSub staticSuper = new StaticSub();
+        staticSuper.DynamicPrint();
+    }
+
+    public static class StaticSub  implements Print,Print2{
+        @Override
+        public void DynamicPrint() {
+            System.out.println(Print.PRINT + " "+ Print2.PRINT);
+        }
+    }
+    public interface Print{
+        int PRINT = 1;
+        void DynamicPrint();
+    }
+    public interface Print2{
+        int PRINT = 2;
+    }
+}
+```
+
+
+
+#### 9.3 完全解耦
+
+当某个方法操作的是类而非接口，那么当你向将这个方法应用于不在此继承结构中的某个类，你的解决方法只能是为这个类再编写一个方法，而无法将该方法复用。利用接口则在很大程度上放宽了这种限制，使得我们可以编写复用性更好的代码。例如：
+
+```java
+public static void main(String[] args) {
+        Photo photo = new Photo();
+        Pictrue pictrue = new Pictrue();
+        PrintSomething(photo);
+        PrintSomething(pictrue);
+        if (photo instanceof Print)
+            System.out.println("instance of print");
+        if (photo instanceof Photo)
+            System.out.println("instance of photo");
+    }
+    public static class Photo implements Print{
+        @Override
+        public void DynamicPrint() {
+            System.out.println("This is a photo.");
+        }
+    }
+
+    public static class Pictrue implements Print{
+        @Override
+        public void DynamicPrint() {
+            System.out.println("This is a Pictrue.");
+        }
+    }
+    interface Print{
+        void DynamicPrint();
+    }
+
+    public static void PrintSomething(Print print){
+        print.DynamicPrint();
+    }
+}
+/*Output
+This is a photo.
+This is a Pictrue.
+instance of print
+instance of photo
+*/
+```
+
+可以看到接口可以帮助我们实现多重继承。
+
+##### 【设计模式】策略设计模式
+
+创建一个根据所传递的参数对象的不同，而具有不同行为的方法，称为策略设计模式。这类方法包含所要执行的算法中固定不变的部分，而“策略”包含变化的部分。下面的`Processor`对象就是一个策略。
+
+```java
+class Processor{
+    Object process(Object input){return input;}
+}
+class Upcase extends Processor{
+    String process(Object input){
+        return ((String)input).toUpperCase();
+    }
+}
+class Downcase extends Processor{
+    String process(Object input){
+        return ((String)input).toLowerCase();
+    }
+}
+class Splitter extends Processor{
+    String process(Object input){
+        return Arrays.toString(((String)input).split(" "));
+    }
+}
+
+public class Main {
+    public static void process(Processor p,Object s){
+        System.out.println("Using processor " + p.getClass().getSimpleName());
+        System.out.println(p.process(s));
+    }
+
+    public static void main(String[] args){
+        process(new Upcase(),"this is a string");
+        process(new Downcase(),"this is a STRING");
+        process(new Splitter(),"this is a string");
+    }
+}
+```
+
+而此处若将`Processor`修改为接口，将使耦合性进一步减小，具体参看书9.3
+
+##### 【设计模式】适配器模式
+
+有时你 **无法修改你想使用的类**，即无法在该类基础上继续实现接口，但是你却想它拥有某个其他接口的特性。这时就可以使用适配器模式。
+
+例如我们的手机需要的是低电压来进行充电，现在只有高电压的插座可用，所以我们需要把高电压变为低电压供手机使用。然而我们又不能修改高电压可提供的电压，也不能为这个插座增加更为人性化的功能（提供变压），毕竟电工不是我们的长项~这时候常见的做法是做一个电源适配器。**适配器模式**即是用来解决这一类问题的。即**接受你所拥有的接口，产生你所需要的接口**。
+
+```java
+
+class MobilePhone{
+    int battery = 0;
+    public void charging(LowVoltageCharger charger){
+        charger.charging(battery);
+    }
+}
+
+interface LowVoltageCharger{
+    void charging(int battery);
+}
+
+interface HighVoltageCharger{
+    void charging(int battery);
+}
+
+//此处命名为Adapter是为了与highVoltageCharger区分开来，事实上使用HighVoltageAdapter更合适，
+class Adapter implements LowVoltageCharger{
+    HighVoltageCharger highVoltageCharger;
+
+    public Adapter(HighVoltageCharger highVoltageCharger) {
+        this.highVoltageCharger = highVoltageCharger;
+    }
+
+    @Override
+    public void charging(int battery) {
+        highVoltageCharger.charging(battery);
+    }
+}
+
+public class Main {
+    public static void main(String[] args){
+        MobilePhone mobilePhone = new MobilePhone();
+        //使用低电压插口直接充电
+        LowVoltageCharger lowVoltageCharger = new LowVoltageCharger() {
+            @Override
+            public void charging(int battery) {
+                battery += 1;
+            }
+        };
+        mobilePhone.charging(lowVoltageCharger);
+        //使用适配器来让高电压插口也能为手机充电
+        HighVoltageCharger highVoltageCharger = new HighVoltageCharger(){
+            @Override
+            public void charging(int battery) {
+                battery += 100;
+            }
+        };
+        Adapter adapter = new Adapter(highVoltageCharger);
+        //通过适配器充电
+        mobilePhone.charging(adapter);
+    }
+}
+
+```
+
+可以看出适配器使用了代理的方法，工作交由自己的成员变量进行完成。
+
+由于书上的例子单独拿出来解释适配器模式篇幅依然较大，所以这里用的是笔者自己所理解的例子，如果您有更好的例子或者觉得该示例存在问题，欢迎交流~
+
+#### 9.4 多重继承
+
+##### 【问题】我们应该使用接口还是抽象类？
+
+对于创建类，几乎任何时刻都可以替代为创建一个接口和一个工厂。抽象性应该是应需求而生的，必须时才应该去重构接口，而不是到处添加额外的间接性（创建对象由构造函数到工厂的转变事实上增加了这种间接性）。恰当的原则是优先选择类而不是接口，一旦接口的需求变得明确，再进行重构。
+
+接口是一种重要的工具，但是容易被滥用。
+
+
+
+#### 9.7 接口中的域
+
+接口中的域都是`static`和`final`的，所以可以用于常量组生成
+
+```java
+public interface Months{
+    int JANURAY = 1 , FEBRUAYT = 2;//...
+}
+```
+
+同时可以被非常量表达式初始化
+
+```java
+public interface RandVals{
+  	Random RAND = new Random(47);
+  	int RANDOM_INT = RAND.nextInt(10);
+}
+```
+
+
+
+#### 9.9 接口与工厂
+
+##### 【设计模式】工厂设计模式
+
+不直接调用构造器来构造对象，而是是通过工厂生成**接口的某个实现的对象**，使得这些对象一部分与接口中的方法有关的操作(操作比较复杂)得以复用，而不需要为每一**类**对象都去实现这些操作。
+
+此处例子采用练习19的练习结果：
+
+```java
+
+interface Game{
+    static Random random = new Random();
+    int PLAYER1_VICTORY = 1, PLAYER2_VICTORY = 2, DRAW = 3;
+    int play();
+}
+
+interface GameFactory{
+    Game getGame();
+}
+
+class CoinTossing implements Game{
+    @Override
+    public int play() {
+        boolean result = random.nextBoolean();
+        System.out.println(result?"front":"back");
+        return result?PLAYER1_VICTORY:PLAYER2_VICTORY;
+    }
+	//使用lambda表达式使代码更为简洁
+    public static GameFactory factory = () -> new CoinTossing();
+}
+
+class DiceRolling implements Game{
+    @Override
+    public int play() {
+        int res1 = random.nextInt() % 6 + 1,res2 = random.nextInt() % 6 + 1;
+        System.out.println("result of palyer1:" + res1);
+        System.out.println("result of palyer2:" + res2);
+        if (res1 == res2)return DRAW;
+        return res1 > res2 ? PLAYER1_VICTORY : PLAYER2_VICTORY;
+    }
+    public static GameFactory factory = () -> new DiceRolling();
+}
+
+public class Main {
+    public static void main(String[] args){
+        playGameInTimes(CoinTossing.factory.getGame(),10);
+        playGameInTimes(DiceRolling.factory.getGame(),10);
+    }
+
+    public static void playGameInTimes(Game game,int times){
+        int[] results = new int[times];
+        for (int i = 0; i < times ; i++){
+            results[i] = game.play();
+        }
+        //计算分数ing
+        //假设这是一个复杂的控制流程,这个方法主要针对回合制游戏
+        //双方进行一定的次数，并根据胜负记录进行复杂的计分，反正就是…很复杂就对了，假设代码很多很冗杂！
+      	//此处代码即可通过工厂模式复用
+        System.out.println("Game result print.");
+    }
+}
+```
+
+
+
+### 《第十章 内部类》
+
+#### 10.3 使用`.this`和`.new`
+
+```java
+public class DotNeW{
+    public class Inner{}
+    public static void main(String[] args){
+        DotNeW dn = new DotNeW();
+   		DotNeW.Inner dni = dn.new Inner();
+    }
+}
+```
+
+当内部类为`public`时，通过外部类的对象`.new`来调用创建内部类对象。不必也不能声明`dn.new DotNew.Inner()`
+
+当内部类为嵌套类（静态内部类）时，则只需`new DotNew.Inner()`就可以构造内部类对象。
