@@ -724,7 +724,7 @@ class A{
 + Main\$C.class
 + Main.class
 
-可以看到class文件是以类的层级关系来命名的，其中类的内外部关系用\$符号表示，如果是局部类的话，则会在类名前加上1   
+可以看到class文件是以类的层级关系来命名的，其中类的内外部关系用\$符号表示，如果是局部类或者匿名类的话，则会在类名前加上数字 
 
 
 
@@ -1196,3 +1196,76 @@ public class DotNeW{
 当内部类为`public`时，通过外部类的对象`.new`来调用创建内部类对象。不必也不能声明`dn.new DotNew.Inner()`
 
 当内部类为嵌套类（静态内部类）时，则只需`new DotNew.Inner()`就可以构造内部类对象。
+
+#### 10.6 匿名内部类
+
+匿名内部类没有命名构造器，但是可以通过实例初始化，达到构造器的效果。并且在匿名类内部可以对外部类的方法进行调用，修改外部类的成员。
+
+```java
+abstract class Inner{
+    int var = 1;
+    abstract void setOuterVar(int arg);
+}
+
+class Outer{
+    int outvar = 10;
+    Inner getInner(int innervar){
+        return new Inner() {
+            int var = innervar;
+            @Override
+            void setOuterVar(int arg) {
+                Outer.this.outvar = arg;
+                print();
+            }
+        };
+    }
+    void print(){
+        System.out.println("Outer print");
+    }
+}
+
+public class Main {
+    public static void main(String[] args){
+        Outer outer = new Outer();
+        System.out.println("outvar: " + outer.outvar);
+        Inner inner = outer.getInner(2);
+        inner.setOuterVar(3);
+        System.out.println("outvar: " + outer.outvar);
+    }
+}
+/**output
+outvar: 10
+Outer print
+outvar: 3
+*/
+```
+
+#### 10.9 内部类继承
+
+由于内部类构造器需要连接到外围类对象的引用，平常这种引用是**秘密**的，但是要对内部类进行继承时，无法传递这个秘密引用，下面的特殊语法可以说明关联
+
+```java
+class Outer{
+    //Outer秘密地传递了引用给Inner，也可以通过Outer.this访问这个引用
+    class Inner{}
+}
+public class InheritInner extends Outer.Inner{
+    //如果不做任何处理，Outer的引用是没法通过Inner传递给InheritInner的，报错如下
+    //No enclosing instance of type 'Outer' is in scope
+    InheritInner(Outer outer){
+        //使用outerClass.super()来提供必要引用
+        outer.super();
+    }
+    public static void main(String[] args){
+        Outer outer = new Outer();
+        InheritInner inheritInner = new InheritInner(outer);
+    }
+}
+```
+
+
+
+
+
+### 《第十一章 持有对象》
+
