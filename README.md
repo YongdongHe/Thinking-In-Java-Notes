@@ -1,5 +1,5 @@
 #《Thinking In Java》学习笔记
-[TOC]
+
 
 ### 阅读计划
 
@@ -1089,6 +1089,27 @@ public class Main {
 
 接口是一种重要的工具，但是容易被滥用。
 
+##### 【问题】同时实现多个具有相同方法名的接口，会发生什么？
+
+```java
+class People{}
+interface Study{
+    void f();
+}
+interface Study2{
+    void f();//若换成int f()则会命名冲突
+}
+class Student {
+    public void f() {}
+}
+class UniversityStudent extends Student implements Study2,Study{
+    @Override
+    public void f() {}//甚至可以去掉，因为Student中已经实现了
+}
+```
+
+如图所示，可以同一个方法作为两个接口的实现，但是从程序设计的角度上来说，这样并没有任何好处。
+
 
 
 #### 9.7 接口中的域
@@ -1733,11 +1754,292 @@ A private print.
 
 可以看到通过反射我们依然可以调用私有方法，而且无论这个类是私有的、或是匿名的。
 
+##### 【问题】反射的`newInstance()`方法在类没有默认构造函数时能调用吗？
 
+答案是不能。会产生`java.lang.NoSuchMethodException`错误
+
+可以采用如下方法来调用构造器并且生成对象
+
+```java
+class Person{
+    public Person(String name){
+        System.out.println(name);
+    }
+}
+public class Main {
+    public static void main(String[] args) {
+        Class c = Person.class;
+        try {
+            //Person person = (Person)c.newInstance();  //wrong
+            Constructor constructor = c.getConstructor(String.class);
+            Person person = (Person) constructor.newInstance("realhe");
+        } catch (InstantiationException e) {
+            e.printStackTrace();
+        } catch (IllegalAccessException e) {
+            e.printStackTrace();
+        } catch (NoSuchMethodException e) {
+            e.printStackTrace();
+        } catch (InvocationTargetException e) {
+            e.printStackTrace();
+        }
+    }
+}
+/**
+realhe
+*/
+```
 
 
 
 ### 《第十五章  泛型》
 
 ——理解了边界所在，你才能成为高手。
+
+#### 15.2 简单泛型
+
+```java
+public class Main {
+    public static void main(String[] args) {
+        class A<M,N,O,P>{
+            M k;
+            N v;
+            O t;
+            P yk;
+
+            public A(M k, N v, O t, P yk) {
+                this.k = k;
+                this.v = v;
+                this.t = t;
+                this.yk = yk;
+            }
+            public void print(){
+                System.out.println(k.getClass());
+                System.out.println(v.getClass());
+                System.out.println(t.getClass());
+                System.out.println(yk.getClass());
+            }
+        }
+        A<String,String,String,Integer> a = new A<>("a","b","c",2);
+        a.print();
+        A<String,String,Integer,Integer> a1 = new A<>("a","b",1,2);
+        a1.print();
+    }
+}
+/**Output
+class java.lang.String
+class java.lang.String
+class java.lang.String
+class java.lang.Integer
+class java.lang.String
+class java.lang.String
+class java.lang.Integer
+class java.lang.Integer
+*/
+```
+
+基本用法如上
+
+#### 15.4 泛型方法
+
+非泛型类也可以使用泛型方法，需要将泛型参数置于返回值之前
+
+```java
+public static <T> void f(T a){
+	System.out.print(a.getClass().getName());
+}
+```
+
+##### 15.4.1 利用泛型进行类型推断
+
+在老的Java版本中，进行泛型定义时需要写出如下的代码，造成每次泛型参数都要重复两遍。
+
+```java
+Map<Person,List<? extends Pet>> petPeople = 
+                new HashMap<Person,List<? extends Pet>>();
+```
+
+在新版本中，jdk支持如下的写法；
+
+```java
+Map<Person,List<? extends Pet>> petPeople =  new HashMap<>();
+```
+
+即可以进行自动的类型推断，原来老版本中我们可以通过如下办法做一些省事的事情，即泛型返回值的方法可以自动根据赋值的目标类型，来确定泛型参数，并生成对应的对象
+
+```java
+class Person{}
+class Pet{}
+public class Main {
+    public static void main(String[] args) {
+        Map<Person,List<? extends Pet>> petPeople = New.map();//is OK
+      	f(New.map());//wrong
+    }
+    public static class New{
+        public static <K,V> Map<K,V> map(){
+            return new HashMap<K, V>();
+        }
+    }
+  	public static f( Map<Person,List<? extends Pet>> petPeople) {}
+}
+```
+
+但是这种参数推断只能用在赋值上，用在参数传递上就会出错,如上所示
+
+#### 15.5 匿名内部类
+
+下面的例子结合泛型，工厂模式为Person类实现了Generator接口。使得Person类的对象创建更为安全可靠。
+
+```java
+interface Generator<T>{
+    T next();
+}
+class Person{
+    public Person(String name){
+        System.out.println(name);
+    }
+    public static Generator<Person> generator 
+            = new Generator<Person>() {
+        @Override
+        public Person next() {
+            return new Person("default name");
+        }
+    };
+}
+public class Main {
+    public static void main(String[] args) {
+        Person person = Person.generator.next();
+    }
+}
+```
+
+#### 15.7 擦除的神秘之处
+
+##### 【问题】`ArrayList<String> list1`与`ArrayList<Integer> list2`的类型相同吗？
+
+如下，泛型的参数不同时，人们的直觉认为它们是不同类型，但是程序上会认为他们是相同的类型。
+
+```java
+public class Main {
+    public static void main(String[] args) {
+        ArrayList<String> list1 = new ArrayList<>();
+        ArrayList<Integer> list2 = new ArrayList<>();
+        System.out.println(list1.getClass().equals(list2.getClass()));
+        System.out.println(Arrays.toString(list1.getClass().getTypeParameters()));
+    }
+}
+/**Output
+true
+[E]
+*/
+```
+
+**在泛型内部无法获得任何有关泛型参数类型的信息**，及时用`Class.getTypeParameters()`取出`TypeVariable`对象数组，你也最多只能获得泛型参数的占位符，没有任何意义。
+
+原因是因为泛型是使用擦除来实现的。在使用泛型时，任何具体的类型信息都被擦除了，唯一留下的就是他们的原生类型`ArrayList`。
+
+擦除其实是一种妥协。其减少了泛型的泛化性。如果泛型更早地出现，可能会使用具体化来实现，使类型参数保持为第一类实体，这样就能进行基于类型的语言操作和反射操作。由于使用擦除来实现，我们无法这样做。
+
+基于擦除的实现中，泛型的类型被当作第二类类型处理，在有些环境中无法使用。
+
+
+
+##### 15.7.4 边界处的动作
+
+泛型与非泛型的`get`与`set`函数生成的字节码是相同的，对进入`set()`函数的参数类型检查不需要，因为这由编译器检查。对`get`函数返回的值检查仍旧是需要的。但是使用泛型时，这些检查由编译器自动插入，可以减少自己编码的“噪声”。
+
+泛型中的所有动作都发生在**边界**处：
+
++ 对传递进来的值进行额外的编译器检查
++ 插入对传递出去的值的转型
+
+#### 12.8 擦除的补偿
+
+如下的操作由于确切类型未知都无法工作：
+
+```java
+class Erased<T>{
+    private final int SIZE = 100;
+  	@suppressWarnings("unchecked")
+    public void f(Object arg){
+        if (arg instanceof T){}				//Error
+        T var = new T();					//Error
+        T[] array = new T[SIZE];			//Error
+        T[] array = (T)new Object()[SIZE];	//Unchecked Waining
+    }
+}
+```
+
+但是在后面我们会知道由于擦除的对象最后都擦除为`Object`，事实上最后一条语句是可以行得通的，我们也将在 `ArrayList` 类中看到大量的类似的做法。同时这种做法需要在方法名前面加上`@suppressWarnings("unchecked")`注解。虽然这种做法不一定是最好的解决之道，但是标准库确实会产生大量的类似的警告。
+
+
+
+#### 15.9 边界
+
+泛型参数同时对类跟接口有限制时，写法如下：
+
+```java
+class People{}
+interface Study{}
+class Student implements Study{}
+class Worker extends People{}
+//要求继承自People同时实现Study接口
+class Group <T extends People & Study>{
+}
+//要求实现Study接口
+class AnotherGroup <T extends Study>{
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Group<Student> group = new Group<Student>();
+        Group<Worker> group1 = new Group<Worker>();
+    }
+}
+```
+
+
+
+#### 15.11 问题
+
+##### 15.11.2 实现参数化接口
+
+```java
+class People{}
+interface Study<T>{}
+class Math{}
+class ComputerScience{}
+//不能通过编译
+class Student implements Study<Math>{}
+class UniversityStudent extends Student implements Study<ComputerScience>{}
+//可以通过编译
+class Student implements Study{}
+class UniversityStudent extends Student implements Study{}
+```
+
+不能编译的原因是相当于两次重复实现了相同的接口（虽然这一点其实并不会有问题，在前面的问题有提到，Ref: [【问题】同时实现多个具有相同方法名的接口，会发生什么？]( # 9.4 多重继承)
+
+但是将泛型参数移除后又可以编译了……很迷……
+
+
+
+##### 15.11.4 重载
+
+下面的程序无法编译，因为擦除导致重载方法签名相同
+
+```java
+class People<K,T>{}
+    void f(K k){}
+    void f(T t){}
+}
+```
+
+##### 15.11.5 基类劫持接口
+
+同理在这里有说明
+
+Ref: [【问题】同时实现多个具有相同方法名的接口，会发生什么？]( # 9.4 多重继承)
+
+但是更类似于15.11.2中的情况；由于基类实现了`Study<Math>`的接口，导致派生类无法实现 `Study<ComputerScience>`接口。这点在实现`Comparable`接口时会非常麻烦。
+
+
 
