@@ -462,7 +462,7 @@ finalize
  `System.runFinalization()  ` ：将失去引用(被丢弃但是`finalize()`还没有调用)的对象进行回收，但是此处的`finalize()`调用依然不考虑手动调用的情况。函数说明和示例如下：
 
 ```java
-/**
+	/**
      * Runs the finalization methods of any objects pending finalization.
      * <p>
      * Calling this method suggests that the Java Virtual Machine expend
@@ -1023,7 +1023,6 @@ public class Main {
 例如我们的手机需要的是低电压来进行充电，现在只有高电压的插座可用，所以我们需要把高电压变为低电压供手机使用。然而我们又不能修改高电压可提供的电压，也不能为这个插座增加更为人性化的功能（提供变压），毕竟电工不是我们的长项~这时候常见的做法是做一个电源适配器。**适配器模式**即是用来解决这一类问题的。即**接受你所拥有的接口，产生你所需要的接口**。
 
 ```java
-
 class MobilePhone{
     int battery = 0;
     public void charging(LowVoltageCharger charger){
@@ -1076,7 +1075,6 @@ public class Main {
         mobilePhone.charging(adapter);
     }
 }
-
 ```
 
 可以看出适配器使用了代理的方法，工作交由自己的成员变量进行完成。
@@ -1123,7 +1121,6 @@ public interface RandVals{
 此处例子采用练习19的练习结果：
 
 ```java
-
 interface Game{
     static Random random = new Random();
     int PLAYER1_VICTORY = 1, PLAYER2_VICTORY = 2, DRAW = 3;
@@ -1268,4 +1265,479 @@ public class InheritInner extends Outer.Inner{
 
 
 ### 《第十一章 持有对象》
+
+#### 11.4 容器的打印
+
+##### 【问题】`HashMap` `TreeMap` `LinkedHashMap`三者的联系和区别是什么？
+
+三者中只有 `TreeMap`是线程安全的。
+
+ `HashMap`以hashcode的映射来查找元素位置，最终元素存取的顺序和插入顺序是无关的。
+
+`LinkedHashMap`通过在 `HashMap`的基础上增加了一个运行于所有条目的双重链接列表，用来记录每个元素的头一个和后一个元素，并且链表在增加和修改时开销是常数级别的，所以效率不会降低。通过这种方法`LinkedHashMap`实现了存取顺序跟插入顺序一致。
+
+`TreeMap`则按照比较结果的升序来保存键。
+
+#### 11.6 迭代器
+
+##### 【设计模式】迭代器模式
+
+遍历并选择序列中的对象，而不需要关心序列的底层结构。例如迭代器可以同时用于各种容器内元素的遍历，而使用者只需要关心容器内元素的类型，而不需要关心容器类型。
+
+
+
+### 《第十二章 通过异常处理错误》
+
+#### 12.3 捕获异常
+
+异常处理理论包括终止模型和恢复模型。恢复模型显得非常诱人但是并不适合。因为他需要了解异常抛出的地点，势必要包含以来抛出位置的非通用性代码，增加了维护和编写代码的难度。
+
+
+
+#### 12.6 捕获所有异常
+
+##### 【问题】在捕获异常后重新抛出异常，`printStackTrace()`显示的是原来异常抛出点的调用栈信息还是新的抛出点的信息？
+
+依然为原来抛出点的调用栈信息。若想更新这个信息可以使用`fillInStackTrace()`方法。如下：
+
+```java
+public class Main {
+    public static void main(String[] args){
+        try {
+            getValue();
+        }
+        catch (Exception e){
+            e.printStackTrace();
+        }
+    }
+    public static int getValue()throws Exception{
+        try{
+            throw new Exception();
+        }catch (Exception e){
+            e.printStackTrace();
+            //throw e;
+            throw (Exception)e.fillInStackTrace();
+        }
+    }
+}
+/**Output
+java.lang.Exception
+	at com.tencent.mobile.Main.getValue(Main.java:18)
+	at com.tencent.mobile.Main.main(Main.java:10)
+...
+java.lang.Exception
+	at com.tencent.mobile.Main.getValue(Main.java:22)
+	at com.tencent.mobile.Main.main(Main.java:10)
+...
+可以看到两次输出异常的位置不同，如果换成注释中的throw e直接抛出，则两次输出相同，如下所示
+java.lang.Exception
+	at com.tencent.mobile.Main.getValue(Main.java:18)
+	at com.tencent.mobile.Main.main(Main.java:10)
+...
+java.lang.Exception
+	at com.tencent.mobile.Main.getValue(Main.java:18)
+	at com.tencent.mobile.Main.main(Main.java:10)
+...
+*/
+```
+
+#### 12.8 使用`finally`进行清理
+
+##### 【问题】finally子句能否被return所屏蔽？如下图的代码输出是多少？
+
+```java
+public class Main {
+    public static void main(String[] args){
+        System.out.println(getValue());
+    }
+    public static int getValue(){
+        try{
+            return 0;
+        }catch (Exception e){
+            return 1;
+        }finally {
+            return 2;
+        }
+    }
+}
+/**Output
+2
+*/
+```
+
+且无论图中子句是否被注释，输出都是一样的，可以看出finally无论如何都会被执行。
+
+
+
+#### 12.9 异常的限制
+
+##### 【问题】父类跟接口中有同样名字的方法但是标记的异常类型不同，会发生什么？
+
+我们先不考虑有异常抛出的情况
+
+```java
+class A{
+    public void event(){}
+  	//去掉public则会出错，因为继承自A的方法被声明为默认访问权限，事实上弱化了接口的public权限
+  	//报错信息attempting to assign weaker access privileges
+}
+
+interface B{
+    void event();
+}
+
+class Asub extends A implements B{
+    
+}
+
+public class Main {
+    public static void main(String[] args){
+        Asub asub = new Asub();
+    }
+}
+```
+
+就算`Asub`中没有实现任何方法也能通过编译，因为父类相当于已经实现这个接口了
+
+下面来考虑有异常抛出的情况：
+
+```java
+class AtypeException extends Exception{};
+class BtypeException extends Exception{};
+
+class A{
+  	
+    public void event()throws AtypeException{throw new AtypeException();}
+}
+
+interface B{
+    void event()throws AtypeException;
+  	//void event()throws BtypeException;
+  	//Override method doesn't throw inherited exceptions.
+}
+
+class Asub extends A implements B{
+	
+}
+
+public class Main {
+    public static void main(String[] args){
+        Asub asub = new Asub();
+    }
+}
+```
+
+可以发现接口方法中所抛出的异常必须和父类中`throws`标记的类型一样。否则将编译失败。这便是异常限制。
+
+
+
+同时可以看到异常限制对构造器不起作用。假如上面加入`A`和`Asub`的构造方法如下:
+
+```java
+class A{
+    public A()throws AtypeException{}
+  	//public A()throws BtypeException{}
+  	//A is already defined:异常说明本身不属于方法类型的一部分，不能基于异常说明来重载方法
+   	public A(int i)throws CtypeException{}
+}
+
+class Asub extends A {
+  	//调用默认构造器
+    public Asub()throws AtypeException,BtypeException{}
+  	//用super指定基类构造器
+  	public Asub()throws BtypeException,CtypeException{
+        super(1);
+    }
+}
+```
+
+可以看到`Asub`的构造器可以任意抛出异常，不需要跟`A`的构造器一样，但是需要包含对应的基类构造器的异常说明。
+
+
+
+### 《第十三章 字符串》
+
+#### 13.1 不可变String
+
+喜闻乐见经典比较
+
+```java
+public class Main {
+    public static void main(String[] args) {
+        String str1 = "abv";
+        String str2 = new String("abv");
+        String str3 = str1;
+        String str4 = "abv";
+        String str5 = new String("ab") + "v";
+        String str6 = "ab" + "v";
+        System.out.println(str1 == str2);
+        System.out.println(str1 == str3);
+        System.out.println(str1 == str4);
+        System.out.println(str1 == str5);
+        System.out.println(str1 == str6);
+
+        System.out.println("\n" + str1.equals(str2));
+        System.out.println(str1.equals(str3));
+        System.out.println(str1.equals(str4));
+        System.out.println(str1.equals(str5));
+        System.out.println(str1.equals(str6));
+    }
+}
+/**Output
+false
+true
+true
+false
+true
+
+true
+true
+true
+true
+true
+*/
+```
+
+`==`是对引用的对象进行比较，`equal()`则是对引用对象的内容比较
+
+只要通过`new`生成的`String`，以及其通过运算得到的对象，都是堆上的新对象。而其他的`String`对象都是不可变的。
+
+##### `StringBuilder`和`StringBuffer`
+通常字符串操作是通过隐式调用`StringBuilder`来完成的，如果改成显式调用可以显著减少字节码长度，效率更高。
+`StringBuffer`是线程安全的，所以开销会大一点，有时应该可能还没有字符串操作快。
+
+#### 13.5 格式化输出
+
+##### 13.5.4 格式化说明符
+
+```
+%[argument_index$][flags][width][.precision]conversion
+```
+
++ argument_index : 用于指定参数在参数列表中的位置，未指定的则按顺序从左到右依次填入
+
+  ```java
+   System.out.format("%2$s %1$s %s %s %s","a","b","c","d");
+   /**Output
+   b a a b c
+   */
+  ```
+
++ width:最小尺寸大小，默认右对齐
+
++ flags:例如`-`之类的，可以使width控制的宽度内的内容变成右对齐
+
++ .precision：精度控制，应用于浮点数时默认6位小数，过多则舍入，过少则补0，无法应用于整数
+
+
+conversion：
+
+| 类型转换字符 | 含义        |
+| ------ | --------- |
+| d      | 整数型（十进制）  |
+| c      | Unicode字符 |
+| b      | Boolean   |
+| s      | String    |
+| f      | 浮点数（十进制）  |
+| e      | 浮点数（科学计数） |
+| x      | 整数（十六进制）  |
+| h      | 散列码（十六进制） |
+
+
+
+#### 13.6 正则表达式
+
+##### Group分组
+
+组数分组，利用group以括号进行分组，为0时表示整个表达式例如
+
+`A(B(C))D`中，0代表`ABCD`,1代表`BC`,2代表`C`,示例如下：
+
+```java
+public class Main {
+    public static void main(String[] args) {
+        String str1 = "InterestinG StrinG AlwayS BorN IN HerE , AhH";
+        Pattern pattern = Pattern.compile("([A-Z]+)[a-z]+([A-Z]+)");
+        Matcher matcher = pattern.matcher(str1);
+        while (matcher.find()){
+            for (int i = 0;i <= matcher.groupCount();i++){
+                System.out.printf(i +"."+matcher.group(i) + "     ");
+            }
+            System.out.printf("\n");
+        }
+    }
+}
+/**Output
+0.InterestinG     1.I     2.G     
+0.StrinG     1.S     2.G     
+0.AlwayS     1.A     2.S     
+0.BorN     1.B     2.N     
+0.HerE     1.H     2.E     
+0.AhH     1.A     2.H 
+*/
+```
+
+可以看到这是一种迭代器模式。同时scanner也可以用于正则扫描
+
+```java
+public class Main {
+    public static void main(String[] args) {
+        String str1 = "InterestinG StrinG AlwayS BorN IN HerE , AhH";
+        Pattern pattern = Pattern.compile("([A-Z]+)[a-z]+([A-Z]+)");
+        Scanner scanner = new Scanner(str1);
+        while (scanner.hasNext(pattern)){
+            scanner.next(pattern);
+            MatchResult matcher = scanner.match();
+            System.out.println(matcher.group(0));
+        }
+    }
+}
+/**Output
+InterestinG
+StrinG
+AlwayS
+BorN
+*/
+```
+
+
+
+
+
+### 《第十四章  类型信息》
+
+#### 14.1  为什么需要RTTI(*Run-Time Type Information*)
+
+多态的实现需要。
+
+#### 14.2 Class对象
+
+每个类都有一个`Class`对象，保存在同名的.class文件中。JVM通过类加载器来加载它们并生成对象。
+
+通过`Class.forName`可以根据名字获得`Class`对象，但是名字必须是含包名的完整类名，该方法的副作用则是如果类还没有加载就进行加载：
+
+```java
+class N{
+    static M m = new M();
+    static {
+        System.out.println("Static");
+    }
+    {
+        System.out.println("N constucting");
+    }
+}
+class M{
+    public M() {
+        System.out.println("yes");
+    }
+}
+public class Main {
+    public static void main(String[] args) {
+        try {
+             Class.forName("com.tencent.mobile.N");
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+    }
+}
+/**Output
+yes
+Static
+*/
+```
+
+可以看到static方法和对象是在类被加载时运行和初始化的。
+
+不会引发类加载的情况：
+
++ 类似`N.class`的方法也可以获得Class对象，但是不会对类进行加载。
++ 类中`static final`的**常量**为编译器常量，不需要类的初始化也可以使用。
+
+#### 14.5 instanceof 与 Class 的等价性
+
+`equals`和`==`结果完全一致，均不考虑继承关系，对类型做最确切的判断
+
+`instanceof`和`isInstance()`的结果完全一致，考虑了继承关系  
+
+
+
+#### 14.9 接口与类型信息
+
+##### 【问题】如何使得`HideApi implements PublicApi`中只有A所声明的方法可以调用？
+
+一个比较好的方法是对实现的类`HideApi`使用包管理权限，这样在包外部就无法使用HideApi的方法，也无法将`PublicApi`的对象强转为`HideApi`.
+
+```java
+package A;
+/** PublicApi.java*/
+public interface PublicApi{
+    void publicMethod();
+}
+/** HideApi.java*/
+public class HideApi {
+    public static PublicApi makePublicApi(){return new Api();}
+}
+class Api implements PublicApi{
+  	public void privateMethod() {}
+    @Override
+    public void publicMethod() {}
+}
+```
+
+```java
+package B;
+public class Main {
+    public static void main(String[] args) {
+        PublicApi publicApi = HideApi.makePublicApi();
+      	/**在这里
+    }
+}
+```
+
+这样在外部就完全隐藏了`Api`类的实现细节。
+
+##### 【问题】通过反射能访问到私有方法吗？
+
+```java
+class PrivateApi{
+    private void print(){
+        System.out.println("A private print.");
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        PrivateApi privateApi = new PrivateApi();
+        //can't access privateApi.print()
+        try {
+            Method method = privateApi.getClass().getDeclaredMethod("print");
+            method.setAccessible(true);
+          	/**
+          	public Object invoke(Object obj, Object... args)
+          	obj为调用该方法的对象，后面是方法需要的参数
+          	*/
+            method.invoke(privateApi);
+        } catch (NoSuchMethodException e) {
+            e.printStackTrace();
+        } catch (InvocationTargetException e) {
+            e.printStackTrace();
+        } catch (IllegalAccessException e) {
+            e.printStackTrace();
+        }
+    }
+}
+/**Output
+A private print.
+*/
+```
+
+可以看到通过反射我们依然可以调用私有方法，而且无论这个类是私有的、或是匿名的。
+
+
+
+
+
+### 《第十五章  泛型》
+
+——理解了边界所在，你才能成为高手。
 
