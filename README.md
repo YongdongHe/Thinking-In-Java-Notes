@@ -1,5 +1,6 @@
 #《Thinking In Java》学习笔记
 
+[TOC]
 
 ### 阅读计划
 
@@ -2043,3 +2044,310 @@ Ref: [【问题】同时实现多个具有相同方法名的接口，会发生�
 
 
 
+#### 15.12 自限定类型
+
+##### 15.12.1 古怪的循环泛型
+
+类古怪地出现在自己的基类中
+
+```java
+class BasicHolder<T>{
+    T element;
+    void set(T arg){element = arg;}
+    T get(){return element;}
+}
+class SubType0<T> extends BasicHolder<T>{
+
+}
+class SubType extends BasicHolder<SubType>{
+
+}
+public class Main{
+    public static void main(String[] args){
+        SubType subType = new SubType();
+        subType.set(new SubType());
+    }
+}
+```
+
+事实上这样做，只是表示基类用导出类作为了自己的泛型参数。产生的类的对象都是确切类型，而不是泛型。即导出类（派生类）的参数类型已经限制了，边界即为自身。
+
+##### 15.12.2 自限定
+
+```JAVA
+class SelfBounded<T extends SelfBounded<T>>{
+    T element;
+    void set(T arg){element = arg;}
+    T get(){return element;}
+}
+class A extends SelfBounded{
+
+}
+class B extends SelfBounded<B>{
+
+}
+class C extends SelfBounded<D>{
+    //wrong , D is not within its bound,should extends SelfBounded<D>
+}
+class D{}
+class E extends SelfBounded<B>{
+
+}
+class F extends SelfBounded<A>{
+    //wrong , A is not within its bound,should extends SelfBounded<A>
+}
+public class Main{
+    public static void main(String[] args){
+        SelfBounded selfBounded = new SelfBounded();
+        selfBounded.set(new A());
+        selfBounded.set(new D()); //wrong
+        System.out.println(selfBounded.get().getClass().getName());
+    }
+}
+```
+
+自限定的作用就是做出如下限制：**继承关系时** ，其派生类必须是以
+
+```java
+class A extends SelfBounded<A>{}//自限定的格式
+```
+
+格式存在，即泛型类型参数必须与当前定义的类相同。
+
+自限定同样可以用于泛型方法，限制传入参数的类型必须也是自限定的格式
+
+##### 【问题】什么是协变？
+
+协变的场景是这样的：假如我们有一个基类
+
+```java
+interface SuperGetter{
+    SuperClass getInstance();
+}
+class SuperClass implements SuperGetter{
+    public SuperClass getInstance(){return new SuperClass();}
+}
+```
+
+其函数`getInstance()`返回当前`SuperClass`类型的一个对象
+
+那么如果有一个派生类`SubClass`继承自`SuperClass`，那么派生类的`getInstance()`是否应该变为返回一个`SubClass`更为合理呢？如下：
+
+```java
+interface SubGetter{
+    SubGetter getInstance();
+}
+class SubClass extends SuperClass implements SubGetter{
+    public SubClass getInstance(){return new SubClass();}
+}
+```
+
+这便是返回类型协变，利用自限定泛型能很好地实现这一点。
+
+同理函数的参数也是一样，例如实现copy函数时，copy的参数类型也需要根据当前类而变化
+
+
+
+##### 15.12.3 参数协变：自限定的价值所在
+
+*Covariant Return Type* :协变返回类型是什么？参照上面的问题
+
+下面的示例利用泛型，同时演示了无继承关系时，返回值和参数类型随类变化（**但是只有存在继承关系时才能称为协变**）的实现，以及利用工厂模式来曲线救国地在泛型内部使用new创建泛型类型对象。Ref(Ctrl + Click): [#擦除的补偿](#12.8 擦除的补偿)
+
+```java
+interface Factory<F>{
+    F create();
+}
+class SelfBounded<T extends SelfBounded<T>>{
+    String name;
+    Factory<T> factory;
+    public SelfBounded(Factory<T> factory){
+        this.factory = factory;
+    }
+    void setName(String name){this.name = name;}
+    void copy(T arg){ this.name = arg.name;}
+
+    @Override
+    public String toString() {
+        return "My name is " + name;
+    }
+
+    T getNextInstance(){ return factory.create();}
+}
+class Person extends SelfBounded<Person>{
+    Person(){super(Person::new);}
+//此处使用了lambda表达式使得代码更简洁，效果与下面的代码是一样的
+//    Person(){
+//        super(new Factory<Person>() {
+//            @Override
+//            public Person create() {
+//                return new Person();
+//            }
+//        });
+//    }
+}
+class Student extends SelfBounded<Student>{
+    Student() {super(Student::new);}
+}
+
+public class Main{
+    public static void main(String[] args){
+        Person mike = new Person();
+        mike.setName("mike");
+        Person tony = mike.getNextInstance();
+        tony.setName("tony");
+        System.out.println(mike);
+        System.out.println(tony);
+        mike.copy(tony);
+        System.out.println(mike);
+
+        System.out.println(new Person().getNextInstance().getClass().getName());
+        System.out.println(new Student().getNextInstance().getClass().getName());
+    }
+}
+/**Output
+My name is mike
+My name is tony
+My name is tony
+com.note.Person
+com.note.Student
+*/
+```
+
+###### 非泛型的时候无法实现协变
+
+当我们需要实现参数协变时，在非泛型代码中，参数类型不能跟随子类型进行变化。
+
+```java
+class Base{}
+class Derived extends Base{}
+class OrdinarySetter{
+    void set(Base base){
+        System.out.println("OrdinarySetter Setter");
+    }
+}
+class DerivedSetter extends OrdinarySetter{
+    void set(Derived derived){
+        System.out.println("DerivedSetter Setter");
+    }
+}
+
+public class Main{
+    public static void main(String[] args){
+        Base base = new Base();
+        Derived derived = new Derived();
+        DerivedSetter ds = new DerivedSetter();
+        ds.set(base);
+        ds.set(derived);
+    }
+}
+/**Output
+OrdinarySetter Setter
+DerivedSetter Setter
+*/
+```
+
+可以看到set方法只是**被重载而不是覆盖了**，但是使用自限定来实现，就可以达到导出类中只有一个set方法。
+
+###### 泛型时使用自限定，实现协变
+
+使用自限定实现协变
+
+```java
+class OrdinarySetter<T extends OrdinarySetter<T> >{
+    T element;
+    void set(T arg){
+        element = arg;
+    }
+    void print(){
+        if (element != null)
+            System.out.println(element.getClass().getName());
+    }
+}
+class DerivedSetter extends OrdinarySetter<DerivedSetter>{
+
+}
+
+public class Main{
+    public static void main(String[] args){
+        DerivedSetter ds = new DerivedSetter();
+        DerivedSetter ds2 = new DerivedSetter();
+        OrdinarySetter os = new OrdinarySetter();
+        OrdinarySetter os2 = new OrdinarySetter();
+
+        //ds.set(os);//wrong
+        ds.set(ds2);
+        ds.print();
+
+        os.set(ds);
+        os.print();
+
+        os.set(os);
+        os.print();
+    }
+}
+/**Output
+com.note.DerivedSetter
+com.note.DerivedSetter
+com.note.OrdinarySetter
+*/
+```
+
+可以看到使用自限定后，`DerivedSetter`类的`set()`方法接受的参数已经被限制为了`DerivedSetter`,而`OrdinarySetter`之所以还能接受`DerivedSetter` ,是因为这里参数发生向上转型本来就是可行的。
+
+###### 泛型时不使用自限定，依然无法实现协变
+
+如果不使用自限定，那么普通的继承机制就会介入，依然为重载而不是覆盖。
+
+```java
+class Base{}
+class Derived extends Base{}
+class OrdinarySetter<T>{
+    T element;
+    void set(T arg){
+        System.out.println("OrdinarySetter");
+    }
+
+}
+class DerivedSetter extends OrdinarySetter<Base>{
+    void set(Derived arg){
+        System.out.println("DerivedSetter");
+    }
+    
+}
+
+public class Main{
+    public static void main(String[] args){
+        DerivedSetter ds = new DerivedSetter();
+        OrdinarySetter os = new OrdinarySetter();
+        ds.set(new Base());//依然可以接受Base对象，说明是重载。如果覆盖了，由于参数无法向下转型，所以此处传入基类是会出错的
+        ds.set(new Derived());
+		//擦除边界：
+        os.set(new Base());
+        Base base = os.get();//wrong
+        OrdinarySetter<Base> osBase = new OrdinarySetter<>();
+        osBase.set(new Base());
+        Base base1 = osBase.get();
+    }
+}
+/**Output
+OrdinarySetter
+DerivedSetter
+*/
+```
+
+#### 15.15 混型
+
+AOP：面向方面编程
+
+混型的价值：将特性和行为一致地应用于多个类。实现方法：
+
++ 与接口混合
++ 使用装饰器模式
++ 与动态代理结合
+
+#### 15.17 对潜在类型机制的补偿
+
+##### 15.17.4 用适配器仿真潜在类型
+
+仿真Python的鸭子类型：“我不关心我在这里使用的类型，只要它具有这些方法即可”
