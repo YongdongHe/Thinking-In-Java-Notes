@@ -2351,3 +2351,360 @@ AOP：面向方面编程
 ##### 15.17.4 用适配器仿真潜在类型
 
 仿真Python的鸭子类型：“我不关心我在这里使用的类型，只要它具有这些方法即可”
+
+
+
+### 《第十六章 数组》
+
+#### 16.5 数组与泛型
+
+如下的创建将出错，因为数组必须确切知道他们持有的类型，而泛型会导致类型擦除。
+
+```java
+Peel<Apple>[] apples = new Peel<Apple>[10];
+```
+
+
+
+#### 16.7 Arrays实用功能
+
+##### 16.7.5 `Arrays.binarySearch()`
+
+在已排序的数组中使用二分查找寻找目标所在位置。没有找到则返回负值。计算方式：
+
+```java
+//未找到时，返回 (- 插入点位置 - 1)
+//其中插入点位置为第一个大于查找对象的元素的位置，如果都小于，则插入点为数组大小
+public class Main{
+    public static void main(String[] args){
+        int[] b = new int[]{3,4,5,6,8,11};
+        System.out.println(Arrays.binarySearch(b,10));
+        System.out.println(Arrays.binarySearch(b,1));
+    }
+}
+/**Output
+-6
+-1
+*/
+```
+
+
+
+### 《第十七章 容器深入研究》
+
+#### 17.8 理解Map
+
+##### 17.8.1 性能
+
+HashMap\LinkedHashMap\TreeMap的差异在前面已经提到过，不再叙述。
+
++ `WeakHashMap`:允许释放映射所指向的对象，如果映射之外没有引用指向某个键，则键可以被回收。
++ `ConcurrentHashMap`:线程安全的Map,不涉及同步加锁问题
++ `IdentityHashMap`：使用`==`代替`equals()`对键进行比较
+
+
+#### 17.9 散列与散列码
+
+`HashCode`不必是独一无二的，而且更应该关注生成速度，而不是唯一性。但是通过`hashCode()`和`equals()`必须能完全确定对象的身份。
+
+#### 17.10 接口的不同实现
+
+##### 17.10.5 对Map的选择
+
+除了`IdentityHashMap`,所有的Map实现的插入操作都会随着Map尺寸的变大而明显变慢，但是查找的代价会小得多。
+
+`HashMap`有关概念：
+
++ 容量：表中的桶位数
++ 初始容量：表在创建时所拥有的桶位数，`HashMap`和`HashSet`都允许指定初始容量来进行容器构造。
++ 尺寸：表中所存的项数。
++ 负载因子：尺寸/容量。空表负载因子为0，半表为0.5。`HashMap`和`HashSet`都具有允许指定负载因子的构造器。当负载情况达到负载因子的水平时，容器将自动增加容量（桶位数）。实现方式是使容量大致加倍，并重新将现有对象分配到新的桶位集中。（**再散列**）`HashMap`默认负载因子是0.75。
+
+
+
+#### 17.12 持有引用
+
+`SoftReference`:软引用
+
+`WeakReference`:弱引用
+
+`PhantomReference`:虚引用
+
+详情见《深入理解Java虚拟机》
+
+
+
+### 《第十八章 Java I/O系统》
+
+#### 18.1 File
+
+访问当前目录：`./`
+
+上一级目录： `../`
+
+上上级目录：`../../`
+
+根目录：`/`
+
+#### 18.4 `Reader`和`Writer`
+
+##### 【问题】设计`Reader`和`Writer`的目的是什么？
+
+老的Stream继承结构仅支持8位字节流，并且不能很好地处理16位的Unicode字符。Java本身的char也是16位的Unicode。
+
+#### 18.10 新I/O
+
+##### 18.10.1 转换数据（含编码转换）
+
+`Channel`使用体验：
+
+```java
+public class Main{
+    public static void main(String[] args){
+        final int BSIZE = 1024;
+        String encoding = System.getProperty("file.encoding");
+        System.out.println(encoding);
+        try {
+            //开始写
+            FileChannel fc = new FileOutputStream("test.out").getChannel();
+            fc.write(ByteBuffer.wrap("Heros never die.".getBytes()));
+            fc.close();
+            //开始读
+            fc = new FileInputStream("test.out").getChannel();
+            ByteBuffer buff = ByteBuffer.allocate(BSIZE);//分配缓冲区
+            fc.read(buff);
+            buff.flip();//做好让缓冲区可以被读取的准备
+            System.out.println("Decoding using + " + encoding + ": " +
+            Charset.forName(encoding).decode(buff));
+            //再输出一次会发现这次buff为空了
+            System.out.println("Decoding using + " + encoding + ": " +
+                    Charset.forName(encoding).decode(buff));
+            //使用rewind()回到缓冲区最开始的位置
+            buff.rewind();
+            System.out.println("Decoding using + " + encoding + ": " +
+                    Charset.forName(encoding).decode(buff));
+            fc.close();//关闭
+        }catch (IOException e){
+            e.printStackTrace();
+        }
+    }
+}
+/**Output
+UTF-8
+Decoding using + UTF-8: Heros never die.
+Decoding using + UTF-8: 
+Decoding using + UTF-8: Heros never die.
+*/
+```
+
+##### 18.10.6 内存映射文件
+
+使用`MappedByteBuffer`来实现创建和修改哪些因为太大而不能放入内存的文件。
+
+
+
+#### 18.11 压缩
+
+##### 18.11.1 用GZIP进行简单压缩
+
+输出流直接封装成`GZIPOutputStream`或`ZipOutputStream`，输入流直接封装成`GZIPInputStream`或`ZipInputStream`即可。
+
+##### 18.11.2 用Zip进行多文件保存
+
+涉及Zip库的使用，之后再进行相关详细的学习。
+
+#### 18.12 对象序列化
+
+##### 18.12.2 序列化的控制
+
+`Externalizebale`对象的恢复与`Serializable`对象恢复不同之处在于，前者需要调用对象的默认构造器，并实现而后者只依赖存储的二进制位。
+
+##### 【问题】`readExternal`方法和`writeExternal`方法中读写的顺序是一样的吗？还是先写的会被先读？下列程序输出内容是什么？
+
+```java
+class Pack implements Externalizable{
+    String str1;
+    String str2;
+    String str3;
+    public Pack(){
+
+    }
+
+    public Pack(String str1, String str2, String str3) {
+        this.str1 = str1;
+        this.str2 = str2;
+        this.str3 = str3;
+    }
+    @Override
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+        str3 =(String) in.readObject();
+        str2 =(String) in.readObject();
+        str1 =(String) in.readObject();
+    }
+
+    @Override
+    public void writeExternal(ObjectOutput out) throws IOException {
+        out.writeObject(str1);
+        out.writeObject(str2);
+        out.writeObject(str3);
+    }
+    void print(){
+        System.out.println(str1+" " + str2 + " " + str3);
+    }
+}
+
+public class Main{
+    public static void main(String[] args){
+
+        try {
+            Pack pack1 = new Pack("Mike","Anna","Allen");
+            ObjectOutputStream o = new ObjectOutputStream(new FileOutputStream("test.out"));
+            o.writeObject(pack1);
+            o.close();
+            ObjectInputStream in = new ObjectInputStream(new FileInputStream("test.out"));
+            Pack pack2 = null;
+            try {
+                pack2 = (Pack) in.readObject();
+            } catch (ClassNotFoundException e) {
+                e.printStackTrace();
+            }
+            pack2.print();
+        }catch (IOException e){
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+
+
+##### transient关键字
+
+可以关闭`Serializable`对象的某些成员的序列化。
+
+同时`Serializable`接口中虽然没有方法，但是也可以通过为其添加`writeObject`和`readObject`方法，实现自定义的序列化机制。但是方法签名必须准确：
+
+```
+private void writeObject(ObjectOutputStream stream) throws IOException;
+private void readObject(ObjectInputStream stream) throws IOException;
+```
+
+这是因为`ObjectOutputStream`和`ObjectInputStream`的`writeObject`和`readObject`会调用你的对象的相应方法，至于为什么访问到了`private`方法，这是因为用到了14.9中的反射访问的方法。（太坑了，设计过于奇葩，需要手动增加方法，为何不再增加一个接口）
+
+### 《第十九章  枚举类型》
+
+从下面的例子看那些枚举不常用到的特性
+
+```java
+interface Speak{
+    void speak(String content);
+}
+
+//可以实现接口，但是不能继承
+enum MyEnum implements Speak{
+    //实例可以有构造方法
+    A("There is a"),B(),C(),
+    print(){
+
+    },;//可以有方法和构造器，枚举实体必须定义在方法前,用分号隔开
+    String des;
+    MyEnum(){}
+    MyEnum(String des){
+        this.des = des;
+    }
+
+    public void print(){
+        System.out.println("It's a method in enum.");
+    }
+
+    @Override
+    public void speak(String content) {
+
+    }
+    private void privateprint(){
+
+    }
+    //重载toString()方法
+    public String toString(){
+        if (des!=null)return des;
+        return "Name: " + this.name() + " Identifer: "+ this.ordinal();
+    }
+
+    //无法重载name，因为声明为fianl了
+//    public String name(){
+//
+//    }
+
+}
+public class Main{
+    public static void main(String[] args){
+        MyEnum a = MyEnum.A;
+        MyEnum a0 = MyEnum.print;
+        a0.print();
+        MyEnum a1 = MyEnum.A;
+        System.out.println(a0.ordinal());//查看枚举值所在次序
+        System.out.println(a0.name());//查看名字
+        System.out.println(a0.toString());
+        System.out.println(Arrays.toString(MyEnum.values()));
+        System.out.println("Equals Comparing");
+        System.out.println(a == a1);
+        System.out.println(a.equals(a1));
+    }
+}
+
+/**Output
+It's a method in enum.
+3
+print
+Name: print Identifer: 3
+[There is a, Name: B Identifer: 1, Name: C Identifer: 2, Name: print Identifer: 3]
+Equals Comparing
+true
+true
+*/
+```
+
+
+
+#### 19.10 常量相关的方法
+
+可以为`enum`实例编写方法，但是需要为enum定义抽象方法。
+
+```java
+interface Speak{
+    void speak(String content);
+}
+
+//可以实现接口，但是不能继承
+enum MyEnum {
+    A(){
+        void print(){
+            System.out.println("A");
+        }
+    },
+    B(){
+        void print(){
+            System.out.println("B");
+        }
+    };
+    abstract void print();
+
+}
+public class Main{
+    public static void main(String[] args){
+        MyEnum myEnum = A;
+        MyEnum myEnum1 = B;
+        myEnum.print();
+        myEnum1.print();
+    }
+}
+/**Output
+A
+B
+*/
+```
+
+
+
+
+
