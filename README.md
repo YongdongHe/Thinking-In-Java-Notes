@@ -573,7 +573,6 @@ a要被回收时，需等待成员b_of_a被回收，而b_of_a指向b，所以需
 
 ##### 【问题】Java的对象都是在堆上，而非引用计数思想是根据访问“根源于堆栈和静态存储区的引用”所形成的网络来寻找存活的对象的，前面已经提到Java并不会在堆栈上分配对象，那Java虚拟机是如何判断对象存活的呢？
 
-Java不在堆栈上分配对象，但是引用是在堆栈上的。
 
 
 #### 5.7构造器初始化
@@ -2709,5 +2708,475 @@ B
 
 ### 《第二十章 注解》
 
+利用注解完成对成员变量的自动初始化。应用场景，某应用分为很多个模块，为了简化后续开发人员配置新模块的工作，使项目维护更为容易，运用注解来对模块进行初始化。简单修改后可以成为类似`ButterKnife`的工具。
+
+区别在于`ButterKnife`的注解类型是`@Retention(RetentionPolicy.SOURCE)`的，即源代码编译阶段发挥作用的注解，编译完后就丢弃了。而我用的是`@Retention(RetentionPolicy.RUNTIME)`，也是书上用到的，即运行时的再生效的注解，使用反射来完成注解所要达成的目标，有一定的性能损耗。
+
+#### ModuleEntry
+
+先来看`ModuleEntry`类，每个该类对象表示一个模块。
+
+```java
+public class ModuleEntry {
+    int id;
+    String name;
+    String des;
+    public ModuleEntry(int id, String name, String des) {
+        this.id = id;
+        this.name = name;
+        this.des = des;
+    }
+}
+```
 
 
+
+#### Module注解
+
+```java
+@Target(ElementType.FIELD)
+@Retention(RetentionPolicy.SOURCE)
+public @interface Module {
+    int id();
+ 	//String value();//注意注解中名为value的元素，如果应用该注解时，value元素是唯一需要赋值的元素，那么只需在括号内给出value元素所需的值即可
+    String moduleName() default "";
+    String moduleDes() default "";
+}
+```
+
+
+
+#### ModuleSet 注解
+
+用以标识包含`ModuleEntry`的对象的类，我们将对这个类中的带有`Module`注解的元素进行自动初始化。
+
+```java
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface ModuleSet {
+    String value();//其实这里的value没有什么意义，是为了表示一下value元素的特殊，这点稍后会看到
+}
+```
+
+
+
+#### Main函数
+
+先看`main`函数，我最终想要实现的效果应该是其中的`ModuleEntry`对象都能根据注解自己初始化。
+
+```java
+class Activity{}
+@ModuleSet("Main")
+class MainActivity extends Activity{
+    @Module(id = 0,
+            moduleName = "模块管理",
+            moduleDes = "对模块进行管理")
+    ModuleEntry mManagerModule;
+
+    @Module(id = 1,
+            moduleName = "校园网",
+            moduleDes = "校园网管理")
+    ModuleEntry mSeunetModule;
+
+    ModuleEntry mOtherModule;
+  
+    public MainActivity(){
+        ModuleHelper.configureModule(this);
+    }
+}
+
+public class Main{
+    public static void main(String[] args){
+        MainActivity mainActivity = new MainActivity();
+        System.out.println(mainActivity.mManagerModule.des);
+        //NullPointerException，因为mOtherModule没有添加注解，不会被自动初始化
+        //System.out.println(mainActivity.mOtherModule.des);
+    }
+}
+```
+
+而自动初始化是由`ModuleHelper`来完成的。
+
+
+
+#### ModuleHepler
+
+```java
+public class ModuleHelper {
+    public static void configureModule(Activity activity){
+    	//输出传入对象类型
+        System.out.println(activity.getClass());
+        //查看其是否添加了ModuleSet注解并获取注解
+        System.out.println(activity.getClass().isAnnotationPresent(ModuleSet.class));
+        ModuleSet moduleSetAnnotation = activity.getClass().getAnnotation(ModuleSet.class);
+        //必须添加了该注解的类才能使用这个方法，否则不做任何操作
+        if (moduleSetAnnotation == null)return;
+        
+        //遍历所有的域
+        for (Field field : activity.getClass().getDeclaredFields()){
+            Module module = field.getAnnotation(Module.class);
+
+            //如果没有模块注解，或者其类型不是模块实体，则跳过
+            if(module == null || field.getType() == ModuleEntry.class)continue;
+            //对所有的满足条件的Field，输出模块对应的名字和描述
+            System.out.println(module.moduleName() + " " + module.moduleDes());
+            System.out.println(field.getName());
+            
+            //生成模块条目
+            ModuleEntry moduleEntry = new ModuleEntry(module.id(),module.moduleName(),module.moduleDes());
+            try {
+                field.setAccessible(true);
+                //使用set函数可以为当前的field实际代表的对象进行赋值,如果是static对象则可以把第一个参数置为null
+                field.set(activity,moduleEntry);
+                //使用get函数可以获得这个对象
+                //ModuleEntry moduleEntry0 = (ModuleEntry) field.get(activity);
+            } catch (IllegalAccessException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+}
+
+/**Output
+class com.note.MainActivity
+true
+模块管理 对模块进行管理
+mManagerModule
+校园网 校园网管理
+mSeunetModule
+对模块进行管理
+*/
+```
+
+
+
+### 《第二十一章 并发》
+
+#### 21.2 基本的线程机制
+
+##### 21.2.3 使用Executor
+
+优先选择`Executor`而不是`Thread`，可以进行线程的复用，减少线程创建和销毁的开销。
+
++ `FixedThreadPool`:固定线程数量，统一进行线程分配。不用为每个任务都固定地付出创建线程的开销。
++ `SingleThreadExecutor`：像是数量为1的`FixedThreadPool`，如果提交多个任务，将进行排队。
+
+##### 21.2.4 从任务中返回值
+
+实现`Callable`接口
+
+##### 【问题】`yield`函数和`sleep`函数的相关性是？
+
+sleep带有时间参数，可以让线程休眠指定的时间。yield则是让出当前线程的CPU使用权，但让出的时间是不可设定的。两者都不会释放锁。
+
+实际上，yield()方法对应了如下操作： 先检测当前是否有相同优先级的线程处于同可运行状态，如有，则把 CPU 的占有权交给此线程，否则继续运行原来的线程。所以yield()方法称为“退让”，它把运行机会让给了同等优先级的其他线程。 
+
+sleep方法允许较低优先级的线程获得运行机会，但yield()方法执行时，当前线程仍处在可运行状态，所以不可能让出较低优先级的线程些时获得CPU占有权。 在一个运行系统中，如果较高优先级的线程没有调用 sleep 方法，又没有受到 I/O阻塞，那么较低优先级线程只能等待所有较高优先级的线程运行结束，才有机会运行。 
+
+yield()只是使当前线程重新回到可执行状态，所以执行yield()的线程有可能在进入到可执行状态后马上又被执行。所以yield()只能使同优先级的线程有执行的机会。
+
+
+
+
+##### 21.2.8 后台进程
+
+使用`setDaemon()`方法使线程成为后台线程。后台线程创建的线程依然是后台线程。并且可能在`finally`中的语句没有执行就停止运行。由于非后台线程全部终止时，后台线程会强行被终止，所以无法优雅地关闭后台线程。
+
+非后台的`Executor`是一种更好的选择，因为其控制的所有任务可以同时被关闭。
+
+
+
+#### 21. 3 共享受限资源
+
+##### 【问题】`volatile`和`synchronized `关键字的区别是？
+
+`volatile`可以修饰变量，保证变量在被多个线程读时是最新的，即线程A对变量进行写时，线程B会等到变量写完以后再读变量。但是并不能防止两者发生写覆盖，例如A和B同时读了最新的变量` i = 0`，然后两个线程都进行`i++`操作，然后再写入i，会导致最后`i==1`，而期望结果应该是`i==2`。
+
+`synchronized`可以修饰变量和方法，代码块。保证目标在读写上都会加锁，一直到持有锁的线程使用完，并释放资源。
+
+>`volatile` 仅能使用在变量级别, `synchronized`则可以使用在变量,方法。
+>`volatile`仅能实现变量的修改可见性,但不具备原子特性,而`synchronized`则可以保证变量的修改可见性和原子性。
+>`volatile`不会造成线程的阻塞,而`synchronized`可能会造成线程的阻塞。
+>`volatile`标记的变量不会被编译器优化,而`synchronized`标记的变量可以被编译器优化。
+
+
+
+##### 21.3.7 线程本地存储
+
+使用`ThreadLocal`类为每个线程创建存储副本。一般作为静态域存储。
+
+```java
+class MyValue{
+    int value;
+    public MyValue(int value){this.value = value;}
+
+    public void setValue(int value) {
+        this.value = value;
+    }
+
+    public int getValue() {
+        return value;
+    }
+
+    @Override
+    public String toString() {
+        return "" + value;
+    }
+}
+
+public class Main{
+    public static class Accessors implements Runnable{
+        int id;
+        public Accessors(int id){
+            this.id = id;
+        }
+        @Override
+        public void run() {
+            for (int i = 0;i<5;i++){
+                System.out.println("#" + id + ":" + value.get());
+                value.set(new MyValue(value.get().getValue()-1));
+            }
+        }
+    }
+    public static ThreadLocal<MyValue> value = new ThreadLocal<MyValue>(){
+        @Override
+        protected MyValue initialValue() {
+            return new MyValue(20);
+        }
+    };
+    public static void main(String[] args){
+        //value.set(new MyValue(20));
+        //在此处set无用，在每个线程中是根据initialValue的返回结果，来为每个线程分配新的值的
+        ExecutorService exc = Executors.newFixedThreadPool(5);
+        for (int i = 0;i<5;i++){
+            exc.execute(new Accessors(i));
+        }
+    }
+}
+/**Output
+#1:20
+#1:19
+#1:18
+#1:17
+#1:16
+#0:20
+#0:19
+#0:18
+#0:17
+#0:16
+#3:20
+#3:19
+...
+*/
+```
+
+
+
+#### 21.5 线程之间的协作
+
+只能在`synchronized`块中调用`wait()`\ `notify()` \ `notifyAll()`方法。否则运行时将得到`IllegalMoitorStateException`异常。这些方法都是以对象作为单位的，因为锁的持有以对象为单位。
+
+在调用`wait()`时锁会释放，得以让对象的其他`synchronized`方法获得锁并且执行。如果想在对象x外对其发送`notifyAll()`则必须在能取得x的锁的同步控制块中这样做：
+
+```java
+synchronized(x){
+  x.notifyAll();
+}
+```
+
+
+
+#### 21.7 新类中的控件
+
+##### 21.7.1 `CountDownLatch`
+
+应用场景，同步一个或多个任务，使这些任务(调用了`await()`的任务)，等待另外一组任务(调用了`countDown的任务`)全部完成
+
+```java
+CountDownLatch(int count)
+//构造一个用给定计数初始化的 CountDownLatch
+// 使当前线程在锁存器倒计数至零之前一直等待，除非线程被中断，可以阻塞当前线程
+void await()
+
+// 使当前线程在锁存器倒计数至零之前一直等待，除非线程被中断或超出了指定的等待时间
+boolean await(long timeout, TimeUnit unit)
+
+// 递减锁存器的计数，如果计数到达零，则释放所有被await()阻塞的线程
+void countDown()
+
+// 返回当前计数
+long getCount()
+
+// 返回标识此锁存器及其状态的字符串
+String toString()
+```
+
+示例，使用后，总结任务`SummaryTask`将在准备任务`PrepareTask`都完成后才开始执行。
+
+```java
+class SummaryTask implements Runnable{
+    CountDownLatch latch;
+    String taskName;
+    public SummaryTask(CountDownLatch latch,String taskName) {
+        this.latch = latch;
+        this.taskName = taskName;
+    }
+
+    @Override
+    public void run() {
+        try{
+            //需等待所有的需要准备的任务完成，再开始总结任务
+            latch.await();
+            System.out.println("Summary Task " + taskName + " excecuting.");
+        }catch (InterruptedException e){
+            System.out.println("Summary Task " + taskName + "interruperd");
+            e.printStackTrace();
+        }
+    }
+}
+class PrepareTask implements Runnable{
+    CountDownLatch latch;
+    String taskName;
+    public PrepareTask(CountDownLatch latch,String taskName){
+        this.latch = latch;
+        this.taskName = taskName;
+    }
+
+    @Override
+    public void run() {
+    	//完成每个准备任务
+        latch.countDown();
+        System.out.println("Prepare Task " + taskName + " completed.");
+    }
+}
+
+public class Main{
+    public static void main(String[] args){
+        ExecutorService exc = Executors.newCachedThreadPool();
+        //创建三个SummaryTask等待五个PrepareTask的例子所用的latch
+        CountDownLatch latch = new CountDownLatch(5);
+        for (int i = 0;i < 3;i ++){
+            exc.execute(new SummaryTask(latch,"S_task" + i ));
+        }
+        for (int i = 0;i < 5;i ++){
+            exc.execute(new PrepareTask(latch,"P_task" + i ));
+        }
+    }
+}
+/**Output
+Prepare Task P_task0 completed.
+Prepare Task P_task1 completed.
+Prepare Task P_task3 completed.
+Prepare Task P_task2 completed.
+Prepare Task P_task4 completed.
+Summary Task S_task0 excecuting.
+Summary Task S_task1 excecuting.
+Summary Task S_task2 excecuting.
+*/
+```
+
+
+
+##### 21.7.2  `CyclicBarrirer`
+
+某一组任务并行地执行工作，在进行下一个步骤之前等待，直至所有任务完成。可以看作是多轮制度比赛，所有选手完成一轮比赛后，然后进行后续操作。这很像完成的任务都集合在栅栏处，等大家到齐了便打开栅栏。 `CyclicBarrirer`提供一个栅栏动作，是一个`Runnable`。
+
+这里我们选择的栅栏动作是让这些任务再执行一次。这样就可以实现**所有选手完成一轮比赛后再进行一轮，总共需要进行五轮**这样的效果：
+
+```java
+class Task implements Runnable{
+    CyclicBarrier barrier;
+    String taskName;
+
+    public Task(CyclicBarrier barrier, String taskName) {
+        this.barrier = barrier;
+        this.taskName = taskName;
+    }
+
+    @Override
+    public void run() {
+        try{
+            //完成任务后等待栅栏开启
+            System.out.println("Task " + taskName + " excecuting.");
+            barrier.await();
+        }catch (InterruptedException e){
+            System.out.println("Task " + taskName + "interruperd");
+            e.printStackTrace();
+        } catch (BrokenBarrierException e) {
+            e.printStackTrace();
+        }
+    }
+}
+
+
+public class Main{
+    //创建五个任务
+    static int TaskNum = 5;
+    //任务总共要执行的轮数
+    static int TURN_NUM = 3;
+    //当前轮数
+    static int turn = 0;
+    //编写栅栏动作
+    static CyclicBarrier barrier = new CyclicBarrier(TaskNum, new Runnable() {
+        @Override
+        public void run() {
+            System.out.print("\n");
+            if (turn < TURN_NUM){
+                executeTask();
+            }
+        }
+    });
+    public static void main(String[] args){
+        executeTask();
+    }
+    public static void executeTask(){
+        ExecutorService exc = Executors.newCachedThreadPool();
+        turn ++;
+        for (int i = 0;i<TaskNum ; i++)
+            exc.execute(new Task(barrier,"Task" + i));
+    }
+}
+/**Output
+Task Task0 excecuting.
+Task Task2 excecuting.
+Task Task1 excecuting.
+Task Task4 excecuting.
+Task Task3 excecuting.
+
+Task Task0 excecuting.
+Task Task1 excecuting.
+Task Task3 excecuting.
+Task Task2 excecuting.
+Task Task4 excecuting.
+
+Task Task0 excecuting.
+Task Task1 excecuting.
+Task Task2 excecuting.
+Task Task3 excecuting.
+Task Task4 excecuting.
+*/
+```
+
+#### 21.7.3 其他
+
+`BlockingQueue`:取出时可能会发生阻塞
+
+`DelayQueue`: 为队列中的任务设置延时，每次取出到时间的任务进行执行。是一个无界的`BlockingQueue`
+
+`PriorityBlockingQueue`:优先级阻塞队列，如果队列没有可取出对象将阻塞。
+
+`ScheduledExcecutor`：使用`shedule()`运行一次任务,或者`scheduleAtFixedRate()`重复执行任务。
+
+`Semaphore`：信号量，操作系统书籍已解释较为清楚，不再赘述。
+
+### 21.9 性能调优
+
+##### 21.9.1 比较各类互斥技术
+
+互斥情况比较复杂时，使用`Atomic` 已经非常不方便了。通常来说`Lock`效率比`synchronized`要好不少，但是后者编写的代码可读性要高很多。使用`synchronized`的另外一个原因是，实际中，需要互斥的部分可能会相当大，因此在这些方法体中花费的时间明显大于进入和退出互斥的开销，这时候`Lock`带来的优势就不明显了，只有在性能调优时才替换为`Lock`。
+
+##### 21.9.2 免锁容器
+
+一些容器早期具有许多`synchronized`方法，导致了不可接受的开销。新的容器类库是不同步的，但是可以通过`Collections`的各种`static`方法来装饰，同步不同类型的容器大，但是这仍旧是给予`synchronized`的。
+
+新的一部分免锁容器实现的机制，拿`CopyOnWriteArrayList`来说，写入将导致创建整个底层数组的副本，并保留源数组，所以写入过程中，对源数组读取不受影响，写完后利用某种原子操作将新的数组换入。其他的`Set`和`Map`等都使用了类似技术。
